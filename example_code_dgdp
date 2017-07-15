@@ -1,0 +1,101 @@
+model{
+
+# Likelihood
+  for(i in 1:n){ 
+    
+    for(tt in 1:TT){
+      mu[i,tt] <- intercept[g[i],tt] + X[i,tt]*beta[g[i],tt]
+      }#tt
+    
+    for(o in 1:TT){
+      for(m in 1:TT){
+        iOmega[i,o,m]  <- s_omega2[g[i]]*(rho_omega[g[i]]^disT[o,m])
+      }#m
+    }#o
+    
+    Omega[i,1:TT,1:TT] <- inverse(iOmega[i,1:TT,1:TT]) 
+
+    y[i,] ~ dmnorm(mu[i,], Omega[i,1:TT,1:TT])
+  
+    g[i] ~ dcat(psi[lz[i],])
+
+  }#i
+
+# Cluster-specific prior
+
+  for(clus in 1:K){
+   
+    for(tt in 1:TT){
+      beta[clus,tt] ~ dnorm(0,0.1) 
+    }#tt
+    
+    intercept[clus,1:TT] ~ dmnorm(m_int[1:TT], Tau_int[1:TT,1:TT])
+
+    # Hyperprior GP
+    
+    s_omega[clus] ~ dunif(0,5)
+    
+    s_omega2[clus]  <- (s_omega[clus])^2
+
+    rho_omega[clus] ~ dunif( 0, 1)
+    
+    }#clus
+      
+# Dependent stick breaking via Beta regression
+  for(r in 1:2){
+      coef[r] ~ dnorm(0, 1)
+  } #r
+  
+  prsb  ~ dgamma(1,1)
+
+  for(u in 1:un){
+
+    logit(msb[u]) <- inprod(coef , uz[u,])
+
+    for(clus in 1:(K-1)) {
+      V[u,clus] ~ dbeta(prsb*msb[u],prsb*(1-msb[u]))
+    } #clus
+    
+    psi[u,1] <- V[u,1]
+  
+    for(clus in 2:(K-1)){
+      psi[u,clus] <- V[u,clus] * (1 - V[u,clus-1]) * psi[u,clus-1] / V[u,clus-1]
+    }#clus
+   
+    psi[u,K] <- 1 - sum(psi[u,1:(K-1)]) 
+
+} #u
+
+#########################
+# Predicictive inference#
+#########################
+
+for(u in 1:un){
+  gPred[u] ~ dcat(psi[u, ])
+
+  inPred[u,1:TT]  <-  intercept[gPred[u],1:TT]
+  bePred[u,1:TT] <- beta[gPred[u],1:TT]
+  s_omega2P[u]  <-  s_omega2[gPred[u]]
+  rho_omegaP[u]  <- rho_omega[gPred[u]]
+
+  for(tt in 1:TT){
+    mup1[u,tt] <- inPred[u,tt] + Xp1[tt]*bePred[u,tt]
+    mup2[u,tt] <- inPred[u,tt] + Xp2[tt]*bePred[u,tt]
+    mup3[u,tt] <- inPred[u,tt] + Xp3[tt]*bePred[u,tt]
+  }#tt
+
+  for(o in 1:4){
+     for(m in 1:4){
+       iOmegaP[u,o,m]  <- s_omega2P[u]*(rho_omegaP[u]^disT[o,m])
+     }#m
+  }#o
+  
+  OmegaP[u,1:4,1:4] <- inverse(iOmegaP[u,1:4,1:4]) 
+
+  yPred1[u,1:TT] ~ dmnorm(mup1[u,1:TT], OmegaP[u,1:TT,1:TT])
+  yPred2[u,1:TT] ~ dmnorm(mup2[u,1:TT], OmegaP[u,1:TT,1:TT])
+  yPred3[u,1:TT] ~ dmnorm(mup3[u,1:TT], OmegaP[u,1:TT,1:TT])
+
+}#u
+
+}
